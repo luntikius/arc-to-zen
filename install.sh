@@ -2,7 +2,7 @@
 # One-shot bootstrap. Only this invocation's private directory is removed.
 set -eu
 umask 077
-VERSION=0.4.1
+VERSION=0.4.2rc1
 UV_VERSION=0.13.5
 PYTHON_VERSION=3.12.12
 REPOSITORY=https://github.com/luntikius/arc-to-zen
@@ -17,7 +17,7 @@ SESSION=$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/arc-to-zen.XXXXXX")
 cleanup() {
   if [ -d "$SESSION" ] && [ ! -L "$SESSION" ] && [ -f "$SESSION/.arc-to-zen-owned" ]; then
     if /bin/rm -rf "$SESSION"; then
-      printf '%s\n' 'Temporary tool removed. Browser data and recovery backups were retained.'
+      printf '%s\n' 'Temporary tool removed. Browser data, recovery backups and diagnostic logs were retained.'
     else
       printf 'Tool cleanup needs attention: %s\n' "$SESSION" >&2
       printf '%s\n' 'The migration result is unchanged. Recovery backups were retained.' >&2

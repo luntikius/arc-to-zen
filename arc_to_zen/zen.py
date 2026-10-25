@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from .common import MigrationError, private_opener, database, validate_staging_tree
+from . import diagnostics
 
 MAGIC = b"mozLz40\x00"
 
@@ -116,14 +117,20 @@ class Gecko:
 
     def call(self, op, data):
         script = Path(__file__).with_name("gecko.js").read_text()
+        started = time.monotonic()
+        diagnostics.emit('native_call', operation=op, status='started')
         try:
             result = self.client.execute_async_script(script, script_args=[op, data], new_sandbox=False)
-        except Exception:
+        except Exception as exc:
+            diagnostics.error(op, exc)
             raise MigrationError(f"Zen operation {op} failed.") from None
         if not result or not result.get("ok"):
+            diagnostics.emit('native_call', operation=op, status='failed', reason=(result or {}).get('reason'))
             raise MigrationError(f"Zen operation {op} failed: {result.get('reason', 'unsupported data or API') if result else 'no response'}.")
+        diagnostics.emit('native_call', operation=op, status='ok', elapsed_ms=round((time.monotonic() - started) * 1000))
         return result["value"]
 
+    @diagnostics.traced('shutdown')
     def close(self):
         forced = False
         try:
@@ -225,6 +232,11 @@ def comparable_sidebar(sidebar):
 def check_sidebar(expected, actual):
     if comparable_sidebar(expected) != comparable_sidebar(actual):
         raise MigrationError("Zen did not preserve the complete sidebar structure.")
+    for tab in expected.get('tabs', []):
+        if tab.get('zenDefaultUserContextId') in (True, 'true'):
+            stored = next(t for t in actual['tabs'] if t.get('zenSyncId') == tab['zenSyncId'])
+            if stored.get('zenDefaultUserContextId') not in (True, 'true'):
+                raise MigrationError('Zen did not preserve the Space default container indicator.')
     for folder in expected.get("folders", []):
         stored = next(f for f in actual["folders"] if f["id"] == folder["id"])
         if (stored.get("userIcon") or None) != (folder.get("userIcon") or None):
@@ -242,10 +254,26 @@ def stage_profile(app, path, p, emit=lambda *args: None):
         g.call("capabilities", None)
         from .appearance import capabilities, resolve_sidebar
         resolve_sidebar(p.sidebar, capabilities(g), p.skipped)
+        p.theme_count = sum(bool(s.get('theme')) for s in p.sidebar['spaces'])
+        if any(not s.get('theme') for s in p.sidebar['spaces']):
+            from copy import deepcopy
+            default_theme = g.call('defaultTheme', None)
+            for space in p.sidebar['spaces']:
+                if not space.get('theme'):
+                    space['theme'] = deepcopy(default_theme)
+                    diagnostics.emit('theme', space=diagnostics.alias('space', space['uuid']), stage='mapping',
+                        status='default', output_theme=default_theme)
         if p.containers:
             from .merge import remap_contexts
             mapping = g.call("containers", p.containers)
             remap_contexts(p, {int(k): v for k, v in mapping.items()})
+        for space in p.sidebar['spaces']:
+            diagnostics.emit('space', stage='mapping', space=diagnostics.alias('space', space['uuid']),
+                container=diagnostics.alias('container', space['containerTabId']),
+                profile=next((c.get('_diagnosticProfile', 0) for c in p.containers if c['id'] == space['containerTabId']), 0),
+                tabs=sum(t.get('zenWorkspace') == space['uuid'] for t in p.sidebar['tabs']),
+                matches=all(t.get('userContextId') == space['containerTabId'] for t in p.sidebar['tabs']
+                    if t.get('zenWorkspace') == space['uuid']))
         for kind in ("history", "logins", "cookies", "bookmarks", "forms", "addresses", "cards"):
             accepted_history = []
             accepted_cookies = []
@@ -269,6 +297,13 @@ def stage_profile(app, path, p, emit=lambda *args: None):
                     skipped = set(result["skipped"])
                     if len(skipped) != len(result["skipped"]) or result.get("inserted") != len(batch) - len(skipped):
                         raise MigrationError("Incomplete cookie import.")
+                    reasons = result.get('reasons')
+                    if (not isinstance(reasons, dict) or set(reasons) != {str(i) for i in skipped}
+                            or any(v not in diagnostics.REASONS for v in reasons.values())):
+                        raise MigrationError('Unknown cookie rejection reason.')
+                    for i in sorted(skipped):
+                        diagnostics.cookie_skip(batch[i].get('_diagnosticId', 0), 'native', reasons[str(i)])
+                    diagnostics.emit('cookie_batch', stage='native', accepted=result['inserted'], skipped=len(skipped))
                     accepted_cookies.extend(r for i, r in enumerate(batch) if i not in skipped)
                     p.skipped["cookies"] += len(skipped)
                 elif isinstance(result, dict) and "unsupported" in result:
@@ -285,6 +320,7 @@ def stage_profile(app, path, p, emit=lambda *args: None):
                 p.history = accepted_history
             if kind == "cookies":
                 p.cookies = accepted_cookies
+                diagnostics.cookie_summary(len(p.cookies))
         result = g.call("verifyData", {"logins": p.logins, "cookies": p.cookies})
         if result["history"] != len(p.history):
             raise MigrationError("Incomplete history import.")
@@ -305,13 +341,23 @@ def stage_profile(app, path, p, emit=lambda *args: None):
             if not live.get("windows"):
                 raise MigrationError("Zen did not restore the staging window.")
             check_sidebar(p.sidebar, live["windows"][0])
-            g.call("verifyAppearance", p.sidebar)
+            observed_themes = g.call("verifyAppearance", p.sidebar)
+            for observed in observed_themes:
+                diagnostics.emit('theme', stage='restart', restart=restart + 1,
+                    space=diagnostics.alias('space', observed['uuid']), output_theme=observed['theme'], status='verified')
             if p.containers:
                 g.call("verifyContainers", {"containers": p.containers, "spaces": p.sidebar["spaces"]})
-                g.call("verifyUI", p.sidebar["spaces"])
+                ui = g.call("verifyUI", p.sidebar["spaces"])
+                for observed in ui:
+                    diagnostics.emit('space', stage='restart', restart=restart + 1,
+                        space=diagnostics.alias('space', observed['uuid']),
+                        container=diagnostics.alias('container', observed['container']),
+                        matches=True, indicator_hidden=observed['indicatorsHidden'],
+                        hide_default_indicator=observed['hideDefaultIndicator'], status='verified')
             result = g.call("verifyData", {"logins": p.logins, "cookies": p.cookies})
             if result["history"] != len(p.history):
                 raise MigrationError("History changed after browser restart.")
+            diagnostics.emit('verification', stage='restart', restart=restart + 1, accepted=len(p.cookies), status='verified')
     if p.forms:
         with database(path / "formhistory.sqlite") as db:
             forms = {(r[0], r[1]): r[2] for r in db.execute("SELECT fieldname,value,timesUsed FROM moz_formhistory")}

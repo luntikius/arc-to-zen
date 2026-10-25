@@ -134,13 +134,13 @@ class SecurityTests(unittest.TestCase):
 
     def test_release_extractor_rejects_unsafe_members(self):
         script = (ROOT / 'install.sh').read_text().split("<<'PYEXTRACT'\n", 1)[1].split('\nPYEXTRACT', 1)[0]
-        cases = [('arc-to-zen-0.4.1/ok.py', tarfile.REGTYPE, True),
-                 ('arc-to-zen-0.4.1/../../escape', tarfile.REGTYPE, False),
+        cases = [('arc-to-zen-0.4.2rc1/ok.py', tarfile.REGTYPE, True),
+                 ('arc-to-zen-0.4.2rc1/../../escape', tarfile.REGTYPE, False),
                  ('/absolute', tarfile.REGTYPE, False),
                  ('other-prefix/code.py', tarfile.REGTYPE, False),
-                 ('arc-to-zen-0.4.1/link', tarfile.SYMTYPE, False),
-                 ('arc-to-zen-0.4.1/hard', tarfile.LNKTYPE, False),
-                 ('arc-to-zen-0.4.1/pipe', tarfile.FIFOTYPE, False)]
+                 ('arc-to-zen-0.4.2rc1/link', tarfile.SYMTYPE, False),
+                 ('arc-to-zen-0.4.2rc1/hard', tarfile.LNKTYPE, False),
+                 ('arc-to-zen-0.4.2rc1/pipe', tarfile.FIFOTYPE, False)]
         for name, kind, accepted in cases:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as t:
                 root = Path(t); archive = root / 'release.tar.gz'; out = root / 'out'; out.mkdir()
@@ -149,7 +149,7 @@ class SecurityTests(unittest.TestCase):
                     member.linkname = '../../escape'
                     member.size = 2 if kind == tarfile.REGTYPE else 0
                     tar.addfile(member, io.BytesIO(b'ok') if member.size else None)
-                result = subprocess.run([sys.executable, '-c', script, str(archive), str(out), '0.4.1'], capture_output=True)
+                result = subprocess.run([sys.executable, '-c', script, str(archive), str(out), '0.4.2rc1'], capture_output=True)
                 self.assertEqual(result.returncode == 0, accepted)
                 self.assertFalse((root / 'escape').exists())
 

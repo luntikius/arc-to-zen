@@ -11,8 +11,8 @@ root = pathlib.Path(__file__).resolve().parents[1]
 assets = pathlib.Path(sys.argv[1]).resolve()
 with tempfile.TemporaryDirectory(prefix='arc-to-zen-bootstrap-') as t:
     base = pathlib.Path(t)
-    release = base / 'server/releases/download/v0.4.1'; release.mkdir(parents=True)
-    for name in ('arc-to-zen-0.4.1.tar.gz', 'SHA256SUMS'):
+    release = base / 'server/releases/download/v0.4.2rc1'; release.mkdir(parents=True)
+    for name in ('arc-to-zen-0.4.2rc1.tar.gz', 'SHA256SUMS'):
         shutil.copyfile(assets / name, release / name)
     script = (root / 'install.sh').read_text().replace(
         'REPOSITORY=https://github.com/luntikius/arc-to-zen', 'REPOSITORY=' + (base / 'server').as_uri())
@@ -30,13 +30,20 @@ with tempfile.TemporaryDirectory(prefix='arc-to-zen-bootstrap-') as t:
         assert not list(sessions.iterdir()), 'One-shot files remain'
         assert (old / 'keep').read_text() == 'existing tool'
         assert (recovery / 'keep').read_text() == 'backup'
-    for _ in range(0 if "--interrupt-only" in sys.argv else 2):
-        result = subprocess.run(['/bin/sh', str(installer), '--help'], env=env, capture_output=True, text=True)
-        if result.returncode: print(result.stderr); result.check_returncode()
+    for attempt in range(0 if "--interrupt-only" in sys.argv else 2):
+        arguments = ['--help'] if attempt == 0 else ['--runtime', str(recovery), '--diagnostics',
+            '--arc-app', str(base / 'Missing.app'), '--zen-app', str(base / 'MissingZen.app'), 'inspect']
+        result = subprocess.run(['/bin/sh', str(installer), *arguments], env=env, capture_output=True, text=True)
+        if attempt == 0 and result.returncode: print(result.stderr); result.check_returncode()
+        if attempt == 1:
+            assert result.returncode == 1
+            assert 'Diagnostic log:' in result.stderr
+            logs = list((recovery / 'diagnostics').glob('*.jsonl'))
+            assert len(logs) == 1 and 'session_end' in logs[0].read_text()
         assert 'Temporary tool removed.' in result.stdout
         retained()
     if "--interrupt-only" not in sys.argv:
-        (release / 'SHA256SUMS').write_text('0' * 64 + '  arc-to-zen-0.4.1.tar.gz\n')
+        (release / 'SHA256SUMS').write_text('0' * 64 + '  arc-to-zen-0.4.2rc1.tar.gz\n')
         bad = subprocess.run(['/bin/sh', str(installer), '--help'], env=env, capture_output=True, text=True)
         assert bad.returncode != 0 and 'Release checksum mismatch' in bad.stderr
         retained()

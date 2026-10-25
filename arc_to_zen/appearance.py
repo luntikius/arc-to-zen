@@ -8,6 +8,7 @@ import math
 from pathlib import Path
 
 from .common import MigrationError, pairs
+from . import diagnostics
 
 ICON_PREFIX = 'chrome://browser/skin/zen-icons/selectable/'
 
@@ -63,7 +64,9 @@ def color(value):
     return [unit(x) for x in rgb] + [unit(value.get('alpha', 1))]
 
 
-def theme(value, caps, skipped):
+def theme(value, caps, skipped, space=0):
+    diagnostics.emit('theme', space=space, stage='source', theme_present=bool(value), input_theme=value,
+                     status='started' if value else 'absent')
     if not value:
         return None
     try:
@@ -127,13 +130,21 @@ def theme(value, caps, skipped):
             rgb = colorsys.hls_to_rgb(h, lightness, min(1, saturation * intensity))
             dots.append({'c': [round(x * 255) for x in rgb], 'isCustom': False, 'algorithm': harmony,
                          'isPrimary': i == 0, 'lightness': round(lightness * 100), 'type': 'explicit-lightness'})
-        return {'type': 'gradient', 'gradientColors': dots, 'opacity': opacity, 'texture': texture}
-    except (KeyError, TypeError, ValueError, ZeroDivisionError, OverflowError):
+        result = {'type': 'gradient', 'gradientColors': dots, 'opacity': opacity, 'texture': texture}
+        diagnostics.emit('theme', space=space, stage='mapping', status='converted', output_theme=result)
+        return result
+    except (KeyError, TypeError, ValueError, ZeroDivisionError, OverflowError) as exc:
         skipped['themes'] += 1
+        tb = exc.__traceback__
+        while tb.tb_next: tb = tb.tb_next
+        diagnostics.emit('theme', space=space, stage='mapping', status='unsupported',
+                         reason='unknown_schema' if isinstance(exc, (KeyError, TypeError)) else 'conversion',
+                         exception=type(exc).__name__, file='appearance.py', line=tb.tb_lineno,
+                         field=exc.args[0] if isinstance(exc, KeyError) and exc.args else None)
         return None
 
 
-def fields(info, caps, skipped, folder=False):
+def fields(info, caps, skipped, folder=False, space=0):
     if not isinstance(info, dict):
         skipped['appearance'] += 1
         return {}
@@ -142,7 +153,7 @@ def fields(info, caps, skipped, folder=False):
     if mapped is not None:
         result['userIcon' if folder else 'icon'] = mapped
     if not folder:
-        mapped = theme(info.get('windowTheme'), caps, skipped)
+        mapped = theme(info.get('windowTheme'), caps, skipped, space)
         if mapped is not None:
             result['theme'] = mapped
     return result
@@ -152,7 +163,8 @@ def resolve_sidebar(sidebar, caps, skipped):
     for kind in ('spaces', 'folders'):
         for item in sidebar[kind]:
             if '_arcAppearance' in item:
-                item.update(fields(item.pop('_arcAppearance'), caps, skipped, kind == 'folders'))
+                item.update(fields(item.pop('_arcAppearance'), caps, skipped, kind == 'folders',
+                    diagnostics.alias('space', item['uuid']) if kind == 'spaces' else 0))
 
 
 def source_appearance(root):
@@ -170,7 +182,8 @@ def patches(sidebar, source, caps, skipped):
         for obj in sidebar[kind]:
             if obj[key] not in source[kind]:
                 continue
-            mapped = fields(source[kind][obj[key]], caps, skipped, kind == 'folders')
+            mapped = fields(source[kind][obj[key]], caps, skipped, kind == 'folders',
+                diagnostics.alias('space', obj[key]) if kind == 'spaces' else 0)
             changed = {k: v for k, v in mapped.items() if obj.get(k) != v}
             if changed:
                 result[kind].append({key: obj[key], **changed})

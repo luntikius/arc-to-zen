@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from .common import MigrationError, safe
+from . import diagnostics
 
 BUNDLE_IDS = {"arc": "company.thebrowser.Browser", "zen": "app.zen-browser.zen"}
 
@@ -61,6 +62,7 @@ def resolve_apps(args, choose=None):
         except (OSError, KeyError, ValueError):
             raise MigrationError(f'Invalid {kind.title()} application bundle.') from None
         setattr(args, kind + '_app', app)
+        diagnostics.emit('browser', browser=kind, version=str(info.get('CFBundleShortVersionString', '')))
 
 
 def preflight(args):

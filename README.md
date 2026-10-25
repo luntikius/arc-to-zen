@@ -104,6 +104,29 @@ Compatibility is checked against actual data formats and installed Zen APIs. Unk
 
 ## Command-line options
 
+To investigate a migration, enable diagnostics explicitly:
+
+```sh
+arc-to-zen --diagnostics wizard
+arc-to-zen --diagnostics migrate --dry-run
+```
+
+Pass `--diagnostics` before the subcommand when using the one-command installer too.
+The completion or error output shows the log path under
+`~/Library/Application Support/ArcToZenMigration/diagnostics/` (or your `--runtime` directory).
+Logs survive temporary-tool cleanup and rollback. They are not uploaded automatically.
+
+Diagnostics contain versions, stages, counts, cookie rejection reasons, anonymous Space/container
+references and allowlisted theme parameters. They exclude passwords, cookie names/values,
+domains, page URLs, profile names and raw exception messages. No diagnostic file is created
+without the flag. A dry run still never requests Keychain; encrypted cookie compatibility is
+only checked during a confirmed migration. For an earlier run, a new log cannot reconstruct
+the original rejection reasons—repeat the scan or migration with diagnostics enabled.
+
+Skipped themes are reported explicitly and use Zen's native default. That fallback is not
+counted as a transferred Arc theme. Keep the log from a problematic theme so its source format,
+conversion and native restoration checks can be investigated.
+
 The launcher forwards arguments to the CLI. For example, inspect without replacing data:
 
 ```sh

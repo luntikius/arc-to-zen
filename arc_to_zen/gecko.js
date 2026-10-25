@@ -96,7 +96,19 @@ const done = arguments[arguments.length - 1];
         if (+tab.getAttribute("usercontextid") !== space.containerTabId) throw new Error("essential tab container");
       const element = manager.workspaceElement(space.uuid);
       if (!element || !element.isConnected) throw new Error("space absent from sidebar");
-      result.push({space: space.name, profile: identities().getPublicIdentityFromId(space.containerTabId).name,
+      const hideDefaultIndicator = Services.prefs.getBoolPref("zen.workspaces.hide-default-container-indicator", false);
+      const expectedTabs = JSON.parse(SessionStore.getBrowserState()).windows[0].tabs.filter(t =>
+        t.zenWorkspace === space.uuid && t.zenDefaultUserContextId && !t.zenEssential && !t.zenIsEmpty);
+      let indicatorsHidden = true;
+      for (const expected of expectedTabs) {
+        const tab = [...win.gBrowser.tabs].find(t => t.id === expected.zenSyncId);
+        if (!tab || tab.getAttribute("zenDefaultUserContextId") !== "true") throw new Error("space indicator");
+        const line = tab.querySelector(".tab-context-line");
+        const hidden = !!line && win.getComputedStyle(line).display === "none";
+        indicatorsHidden &&= hidden;
+        if (hideDefaultIndicator && !hidden) throw new Error("space indicator");
+      }
+      result.push({uuid: space.uuid, container: space.containerTabId, indicatorsHidden, hideDefaultIndicator,
         essentials: section.querySelectorAll("tab:not([zen-empty-tab])").length});
     }
     await manager.changeWorkspaceWithID(first);
@@ -159,6 +171,7 @@ const done = arguments[arguments.length - 1];
     await manager.promiseInitialized;
     const first = manager.activeWorkspace;
     const loaded = new Set();
+    const verified = [];
     const checkImage = async url => {
       if (!loaded.has(url) && !await imageLoads(url)) throw new Error("appearance image");
       loaded.add(url);
@@ -180,7 +193,17 @@ const done = arguments[arguments.length - 1];
         const gradient = picker.getGradientForWorkspace(manager.getWorkspaceFromId(space.uuid), {getGradient: true});
         if (!win.CSS.supports("background-image", gradient.gradient) && !win.CSS.supports("background-color", gradient.gradient)) throw new Error("appearance gradient");
         if (gradient.grain !== space.theme.texture) throw new Error("appearance texture");
+        const background = win.document.getElementById("zen-browser-background");
+        const actual = background && win.getComputedStyle(background).getPropertyValue("--zen-main-browser-background").trim();
+        const normalize = value => {
+          const style = win.document.createElement("div").style;
+          style.background = value;
+          return style.background;
+        };
+        if (!actual || !normalize(actual) || normalize(actual) !== normalize(gradient.gradient))
+          throw new Error("appearance background");
       }
+      verified.push({uuid: space.uuid, theme: manager.getWorkspaceFromId(space.uuid).theme ?? null});
     }
     for (const folder of data.folders) {
       if (!folder.userIcon) continue;
@@ -189,7 +212,7 @@ const done = arguments[arguments.length - 1];
       await checkImage(folder.userIcon);
     }
     await manager.changeWorkspaceWithID(first);
-    return true;
+    return verified;
   }
   if (op === "export") {
     await Services.logins.initializationPromise;
@@ -274,20 +297,37 @@ const done = arguments[arguments.length - 1];
     let count = 0;
     const skipped = [];
     const scale = cookieScale();
-    const rejected = [
-      "eRejectedEmptyNameAndValue", "eRejectedNameValueOversize", "eRejectedInvalidCharName",
-      "eRejectedInvalidCharValue", "eRejectedInvalidPath", "eRejectedInvalidDomain",
-      "eRejectedInvalidPrefix", "eRejectedNoneRequiresSecure", "eRejectedPartitionedRequiresSecure",
-      "eRejectedHttpOnlyButFromScript", "eRejectedSecureButNonHttps", "eRejectedForNonSameSiteness",
-      "eRejectedAttributePathOversize", "eRejectedAttributeDomainOversize", "eRejectedAttributeExpiryOversize",
-    ].map(name => Ci.nsICookieValidation?.[name]).filter(Number.isInteger);
+    const reasons = {};
+    const reject = (index, reason) => { skipped.push(index); reasons[index] = reason; };
+    const rejected = new Map(Object.entries({
+      eRejectedEmptyNameAndValue: "empty_name_value", eRejectedNameValueOversize: "oversize",
+      eRejectedInvalidCharName: "invalid_name", eRejectedInvalidCharValue: "invalid_value",
+      eRejectedInvalidPath: "invalid_path", eRejectedInvalidDomain: "invalid_domain",
+      eRejectedInvalidPrefix: "invalid_prefix", eRejectedNoneRequiresSecure: "none_requires_secure",
+      eRejectedPartitionedRequiresSecure: "partition_requires_secure", eRejectedHttpOnlyButFromScript: "httponly_from_script",
+      eRejectedSecureButNonHttps: "secure_non_https", eRejectedForNonSameSiteness: "non_same_site",
+      eRejectedAttributePathOversize: "path_oversize", eRejectedAttributeDomainOversize: "domain_oversize",
+      eRejectedAttributeExpiryOversize: "expiry_oversize",
+    }).map(([name, reason]) => [Ci.nsICookieValidation?.[name], reason]).filter(([code]) => Number.isInteger(code)));
     for (const [index, c] of data.entries()) {
+      // The privileged add API may not enforce HTTP cookie-name prefixes.
+      // Preserve their contract rather than admitting an invalid auth cookie.
+      if ((c.name.startsWith("__Secure-") && !c.secure) ||
+          (c.name.startsWith("__Host-") && (!c.secure || c.host.startsWith(".") || c.path !== "/"))) {
+        reject(index, "invalid_prefix"); continue;
+      }
       // Validate the host separately: ILLEGAL_VALUE and INVALID_ARG share a
       // code, so catching it around add() would also hide broken API arguments.
       if (c.host) {
-        try { Services.eTLD.getBaseDomainFromHost(c.host); }
+        const domain = c.host.startsWith(".");
+        // eTLD rejects the leading dot even for ordinary domain cookies.
+        // Strip it only for this lookup; add() must retain the original host.
+        try { Services.eTLD.getBaseDomainFromHost(domain ? c.host.slice(1) : c.host); }
         catch (e) {
-          if (e.result === Cr.NS_ERROR_ILLEGAL_VALUE) { skipped.push(index); continue; }
+          if (e.result === Cr.NS_ERROR_ILLEGAL_VALUE ||
+              (domain && [Cr.NS_ERROR_HOST_IS_IP_ADDRESS, Cr.NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS].includes(e.result))) {
+            reject(index, "invalid_domain"); continue;
+          }
           if (![Cr.NS_ERROR_HOST_IS_IP_ADDRESS, Cr.NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS].includes(e.result))
             throw new Error("cookie host API");
         }
@@ -304,13 +344,13 @@ const done = arguments[arguments.length - 1];
       // Older Gecko add() returns void; accepted records are still read back
       // and verified before installation. Newer APIs return a validation result.
       if (validation != null && validation.result !== Ci.nsICookieValidation.eOK) {
-        if (!rejected.includes(validation.result)) throw new Error("cookie validation API");
-        skipped.push(index);
+        if (!rejected.has(validation.result)) throw new Error("cookie validation API");
+        reject(index, rejected.get(validation.result));
         continue;
       }
       count++;
     }
-    return { inserted: count, skipped };
+    return { inserted: count, skipped, reasons };
   }
   if (op === "bookmarks") {
     const add = async (node, parentGuid) => {
@@ -405,4 +445,4 @@ const done = arguments[arguments.length - 1];
     return { state, cookies };
   }
   throw new Error("unknown operation");
-})().then(value => done({ ok: true, value }), e => done({ ok: false, stage: op, reason: ["appearance capability", "appearance missing object", "appearance image", "appearance icon", "appearance controls", "appearance gradient", "appearance texture", "appearance folder", "login", "cookie missing", "cookie value", "cookie security", "cookie session", "cookie isolation", "cookie expiry", "cookie host API", "cookie API failure", "cookie validation API"].includes(e.message) ? e.message : "unsupported data or API" }));
+})().then(value => done({ ok: true, value }), e => done({ ok: false, stage: op, reason: ["appearance capability", "appearance missing object", "appearance image", "appearance icon", "appearance controls", "appearance gradient", "appearance texture", "appearance folder", "appearance background", "appearance palette", "space indicator", "login", "cookie missing", "cookie value", "cookie security", "cookie session", "cookie isolation", "cookie expiry", "cookie host API", "cookie API failure", "cookie validation API"].includes(e.message) ? e.message : "unsupported data or API" }));

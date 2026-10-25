@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "arc-to-zen"
-version = "0.4.1"
+version = "0.4.2rc1"
 source = { editable = "." }
 dependencies = [
     { name = "lz4" },

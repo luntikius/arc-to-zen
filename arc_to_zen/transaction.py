@@ -16,6 +16,7 @@ from pathlib import Path
 from .common import (MigrationError, atomic_json, database, fsync_dir, private_tree,
                      read_json, private_opener, validate_staging_tree)
 from .zen import read_lz4, comparable_sidebar, prepare_profile_group
+from . import diagnostics
 
 MARKER = ".arc-to-zen-run.json"
 
@@ -160,6 +161,7 @@ class Transaction:
                 raise MigrationError(f"Unfinished run {p.parent.name}; use rollback --run before retrying.")
         run = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:8]
         obj = cls(runtime, run)
+        diagnostics.bind_run(run)
         obj.directory.mkdir(mode=0o700)
         obj.save({"version": 1, "run": run, "target": str(target), "phase": "preparing", "profiles": {}})
         return obj
@@ -172,6 +174,7 @@ class Transaction:
 
     def save(self, value):
         atomic_json(self.journal, value)
+        diagnostics.emit('transaction', phase=value.get('phase'), run=value.get('run'))
 
     @property
     def stage(self):
@@ -188,11 +191,13 @@ class Transaction:
         if expected_before is not None and before != expected_before:
             raise MigrationError("Zen changed since preparation; no replacement performed.")
         emit("Backing up existing Zen")
+        diagnostics.emit('phase', operation='transaction', step='backup', status='started')
         shutil.copytree(target, self.directory / "backup", symlinks=True)
         private_tree(self.directory / "backup")
         if tree_digest(self.directory / "backup") != before or tree_digest(target) != before:
             raise MigrationError("Zen data changed while taking the backup; close Zen and retry.")
         sync_tree(self.directory / "backup")
+        diagnostics.emit('phase', operation='transaction', step='backup', status='ok')
         if not preserve_registration:
             register_profiles(self.stage, profiles, target)
         atomic_json(self.stage / MARKER, {"run": d["run"]})
@@ -201,6 +206,7 @@ class Transaction:
         sync_tree(self.stage)
         after = tree_digest(self.stage)
         emit("Installing verified profile")
+        diagnostics.emit('phase', operation='transaction', step='install', status='started')
         d.update(phase="applying", before=before, installed=after, profiles=profiles)
         self.save(d)
         check_closed()

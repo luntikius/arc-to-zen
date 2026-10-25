@@ -4,6 +4,7 @@ import hashlib
 import subprocess
 
 from .common import MigrationError
+from . import diagnostics
 
 
 def aes_cbc(value, key, iv, decrypt=True):
@@ -40,6 +41,7 @@ class ArcDecryptor:
         self.key = None
 
     @staticmethod
+    @diagnostics.traced('keychain')
     def keychain():
         try:
             result = subprocess.run(["/usr/bin/security", "find-generic-password", "-s", "Arc Safe Storage", "-a", "Arc", "-w"],

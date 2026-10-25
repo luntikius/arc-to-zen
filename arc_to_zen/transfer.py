@@ -13,6 +13,7 @@ from .merge import merge_profiles
 from .zen import Gecko, stage_profile, comparable_sidebar
 from .transaction import Transaction, operation_lock, validate_target, tree_digest
 from .platforms import preflight
+from . import diagnostics
 
 
 class Cancelled(MigrationError):
@@ -50,6 +51,7 @@ def source_stamp(root, selection):
     return digest.hexdigest()
 
 
+@diagnostics.traced('source')
 def collect(root, selection, secrets=False, emit=quiet):
     data = catalog(root); selection.validate(data)
     all_profiles = discover(root)
@@ -95,7 +97,7 @@ def counts(p):
     result.update(profiles=len(p.containers), spaces=len(p.sidebar['spaces']),
         tabs=sum(not t.get('zenIsEmpty') for t in p.sidebar['tabs']), folders=len(p.sidebar['folders']),
         bookmarks=bookmarks(p.bookmarks), archive=p.archived_visits,
-        themes=sum(bool(s.get('theme') or s.get('_arcAppearance', {}).get('windowTheme')) for s in p.sidebar['spaces']),
+        themes=p.theme_count if p.theme_count is not None else sum(bool(s.get('theme') or s.get('_arcAppearance', {}).get('windowTheme')) for s in p.sidebar['spaces']),
         icons=sum(bool(s.get('icon') or s.get('userIcon') or s.get('_arcAppearance', {}).get('iconType'))
                   for s in p.sidebar['spaces'] + p.sidebar['folders']))
     return result
@@ -111,7 +113,9 @@ class Scan:
     zen_stamp: str = None
 
 
+@diagnostics.traced('scan')
 def scan(args, selection, emit=quiet, probe=False):
+    diagnostics.emit('selection', categories=selection.categories, profiles=len(selection.profiles), spaces=len(selection.spaces))
     emit('Checking selected source files')
     before = source_stamp(args.arc_root, selection)
     p = collect(args.arc_root, selection, emit=emit)
@@ -145,10 +149,12 @@ def scan(args, selection, emit=quiet, probe=False):
             warnings.append('Themes and icons are approximated within native Zen capabilities.')
     if before != source_stamp(args.arc_root, selection):
         raise MigrationError('Arc changed during scanning. Close Arc and scan again.')
+    diagnostics.emit('scan_summary', counts=result, skipped_counts=dict(p.skipped), status='ok')
     return Scan(selection, before, result, dict(p.skipped), warnings,
                 tree_digest(args.zen_root) if probe else None)
 
 
+@diagnostics.traced('transfer')
 def transfer(args, scanned, check_closed, emit=quiet):
     check_closed(); validate_target(args.zen_root); preflight(args)
     if source_stamp(args.arc_root, scanned.selection) != scanned.stamp:
@@ -170,6 +176,7 @@ def transfer(args, scanned, check_closed, emit=quiet):
             tx.install({folder: meta}, check_closed, expected_before=scanned.zen_stamp, emit=emit)
             # The exchange is complete. Cancellation no longer interrupts verification.
             tx.verify()
+            diagnostics.emit('transfer_summary', counts=counts(p), skipped_counts=dict(p.skipped), status='verified')
             return {'run': tx.directory.name, 'backup': str(tx.directory / 'backup'),
                     'counts': counts(p), 'skipped': dict(p.skipped)}
         except BaseException as exc:

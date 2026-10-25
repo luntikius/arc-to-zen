@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .common import MigrationError
 from .source import Profile
+from . import diagnostics
 
 
 def merge_profiles(profiles):
@@ -16,7 +17,8 @@ def merge_profiles(profiles):
     identities = {k: set() for k in ("tabs", "spaces", "folders")}
     for context, original in enumerate(profiles, 1):
         p = deepcopy(original)
-        result.containers.append({"id": context, "name": p.name})
+        result.containers.append({"id": context, "name": p.name,
+                                  '_diagnosticProfile': diagnostics.alias('profile', original.key)})
         # Repair accepts the old one-physical-profile-per-Arc-profile layout.
         # Existing non-default containers need an explicit mapping, never flatten.
         if any(t.get("userContextId", 0) for t in p.sidebar["tabs"] if not t.get("zenIsEmpty")):
@@ -27,6 +29,11 @@ def merge_profiles(profiles):
             s["containerTabId"] = context
         for t in p.sidebar["tabs"]:
             t["userContextId"] = context
+            # Native SessionStore persists whether this is the Space's default
+            # context independently of the context ID and its colored indicator.
+            space = next((s for s in p.sidebar['spaces'] if s['uuid'] == t.get('zenWorkspace')), None)
+            if space is not None and not t.get('zenEssential'):
+                t['zenDefaultUserContextId'] = True
             # Old principals contain the old context. Gecko recreates them from
             # the restored URL under the new tab's userContextId.
             def strip(value):

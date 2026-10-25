@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from .common import (MigrationError, arc_us, chrome_us, compatible_url, database,
                      pairs, profile_key, read_json, table_exists)
 from .sessions import latest
+from . import diagnostics
 
 
 @dataclass(repr=False)
@@ -28,6 +29,7 @@ class Profile:
     cards: list = field(default_factory=list)
     skipped: Counter = field(default_factory=Counter)
     archived_visits: int = 0
+    theme_count: int | None = None
 
 
 def identifier(kind, value):
@@ -367,22 +369,31 @@ def read_cookies(p, decrypt):
     with database(cookie_path) as db:
         version = int(db.execute("SELECT value FROM meta WHERE key='version'").fetchone()[0])
         for r in db.execute("SELECT * FROM cookies"):
-            cookie = cookie_record(dict(r), version, decrypt)
+            diagnostic_id = diagnostics.cookie_read(p.key)
+            cookie = cookie_record(dict(r), version, decrypt,
+                on_skip=lambda reason: diagnostics.cookie_skip(diagnostic_id, 'source', reason))
             if cookie is None:
                 p.skipped["cookies"] += 1
             else:
+                cookie['_diagnosticId'] = diagnostic_id
                 p.cookies.append(cookie)
 
 
-def cookie_record(r, version, decrypt, now_s=None):
-    # CHIPS with a cross-site ancestor cannot be represented by Firefox's partition key alone.
-    if (r.get("top_frame_site_key") and r.get("has_cross_site_ancestor", 0)) or r.get("source_type", 0) not in (0, 1, 2):
+def cookie_record(r, version, decrypt, now_s=None, on_skip=lambda reason: None):
+    def reject(reason):
+        on_skip(reason)
         return None
+    # Gecko can store an ancestor-marked partition key, but equivalent request
+    # isolation has not been verified. Keep skipping it until that is tested.
+    if r.get("top_frame_site_key") and r.get("has_cross_site_ancestor", 0):
+        return reject('partition_ancestor')
+    if r.get("source_type", 0) not in (0, 1, 2):
+        return reject('source_type')
     if r.get("source_scheme", 0) not in (0, 1, 2):
-        return None
+        return reject('source_scheme')
     expiry = chrome_us(r["expires_utc"]) // 1000000
     if r["is_persistent"] and expiry <= (time.time() if now_s is None else now_s):
-        return None
+        return reject('expired')
     partition = r.get("top_frame_site_key", "")
     attrs = {}
     if partition:
@@ -390,16 +401,16 @@ def cookie_record(r, version, decrypt, now_s=None):
             u = urlsplit(partition)
             port = u.port
         except ValueError:
-            return None
+            return reject('partition_format')
         if u.scheme not in ("http", "https") or not u.hostname or u.path not in ("", "/"):
-            return None
+            return reject('partition_format')
         if port is not None:
-            return None
+            return reject('partition_port')
         attrs["partitionKey"] = f"({u.scheme},{u.hostname})"
     encrypted = bytes(r["encrypted_value"])
     value = decrypt(encrypted) if encrypted else r["value"].encode()
     if value is None:
-        return None
+        return reject('cipher_unsupported')
     if encrypted and version >= 24:
         expected = hashlib.sha256(r["host_key"].encode()).digest()
         if value[:32] != expected:
@@ -408,10 +419,10 @@ def cookie_record(r, version, decrypt, now_s=None):
     try:
         value = value.decode("utf-8")
     except UnicodeError:
-        return None
+        return reject('encoding')
     same_site = {-1: 256, 0: 0, 1: 1, 2: 2}.get(r["samesite"])
     if same_site is None:
-        return None
+        return reject('same_site')
     return {"host": r["host_key"], "path": r["path"], "name": r["name"], "value": value,
             "secure": bool(r["is_secure"]), "httpOnly": bool(r["is_httponly"]),
             "session": not bool(r["is_persistent"]), "expiry": max(0, expiry),

@@ -9,6 +9,7 @@ from .common import MigrationError, app_version, database, safe
 from .source import arc_container, discover
 from .transaction import Transaction, operation_lock
 from .platforms import resolve_apps, preflight
+from . import diagnostics, __version__
 
 
 def closed(apps):
@@ -92,6 +93,8 @@ def migrate(args):
     print(f"Migration complete. Run: {result['run']}. Backup: {safe(result['backup'])}")
     if result['skipped'].get('cookies', 0):
         print(f"Cookies: {result['counts']['cookies']} transferred; {result['skipped']['cookies']} skipped. Some sites may require signing in again.")
+    if result['skipped'].get('themes', 0):
+        print(f"Space themes: {result['counts']['themes']} transferred; {result['skipped']['themes']} skipped. Unsupported themes use the native Zen default.")
     return 0
 
 
@@ -99,6 +102,7 @@ def migrate(args):
 def parser():
     home = Path.home() / "Library/Application Support"
     p = argparse.ArgumentParser(description="Local Arc → Zen migration. Default operations are read-only.")
+    p.add_argument('--diagnostics', action='store_true', help='Keep a private, sanitized diagnostic log after cleanup')
     for name, default in (("arc-root", home / "Arc"), ("zen-root", home / "zen"),
                           ("runtime", home / "ArcToZenMigration"), ("arc-app", None),
                           ("zen-app", None)):
@@ -144,6 +148,26 @@ def _main(argv=None):
     os.umask(0o077)
     args = parser().parse_args(argv)
     try:
+        with diagnostics.recording(args.runtime, args.diagnostics) as recorder:
+            diagnostics.emit('invocation', version=__version__,
+                dry_run=bool(getattr(args, 'dry_run', False) or getattr(args, 'demo', False)), demo=bool(getattr(args, 'demo', False)))
+            status = 1
+            try:
+                status = _dispatch(args)
+                return status
+            finally:
+                diagnostics.emit('session_end', exit_code=status,
+                    status='cancelled' if status == 130 else 'ok' if status == 0 else 'failed')
+                if recorder:
+                    recorder.close()
+                    for line in diagnostics.receipt(): print(safe(line), file=sys.stderr)
+    except MigrationError as exc:
+        print(f'Error: {safe(exc)}', file=sys.stderr)
+        return 1
+
+
+def _dispatch(args):
+    try:
         if args.command in (None, "wizard"):
             return wizard(args)
         resolve_apps(args)
@@ -179,12 +203,15 @@ def _main(argv=None):
             print("Rollback complete; replaced data retained in the run directory.")
         return 0
     except MigrationError as exc:
+        diagnostics.error('command', exc)
         print(f"Error: {safe(exc)}", file=sys.stderr)
         return 1
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as exc:
+        diagnostics.error('command', exc)
         print("Interrupted. Use rollback --run to reconcile the saved run.", file=sys.stderr)
         return 130
-    except Exception:
+    except Exception as exc:
+        diagnostics.error('command', exc)
         # DB/browser exceptions can include source URLs, usernames or values.
         print("Error: operation failed; browser data was not logged. Check the run journal phase before retrying.", file=sys.stderr)
         return 1

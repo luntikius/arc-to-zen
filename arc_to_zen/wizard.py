@@ -7,6 +7,7 @@ from .platforms import applications, resolve_apps, BUNDLE_IDS
 from .selection import CATEGORIES, DEPENDENCIES, Selection, catalog
 from .terminal import Terminal
 from .transfer import scan, transfer
+from . import diagnostics
 
 
 def selection_screen(ui, data, selection):
@@ -191,11 +192,17 @@ def finished(ui, result, args, demo):
         cookie_notice = [f"Cookies: {result['counts']['cookies']} transferred · {result['skipped']['cookies']} skipped.",
                          'Some sites may require signing in again.']
     lines += cookie_notice
+    theme_notice = []
+    if result.get('skipped', {}).get('themes', 0):
+        theme_notice = [f"Space themes: {result.get('counts', {}).get('themes', 0)} transferred · {result['skipped']['themes']} skipped.",
+                        'Unsupported themes use the native Zen default.']
+    lines += theme_notice
+    lines += diagnostics.receipt()
     lines += ['Keep the backup and run ID for recovery.',
               'To restore later, run the installer again and choose Restore from backup.',
               'The temporary tool is removed when you finish.']
     ui.receipt = ([] if demo else
-        ['ArcToZen migration completed.', *cookie_notice, 'Backup: ' + result['backup'], 'Run: ' + result['run'],
+        ['ArcToZen migration completed.', *cookie_notice, *theme_notice, 'Backup: ' + result['backup'], 'Run: ' + result['run'],
          'To restore later, run the installer again and choose Restore from backup.'])
     while True:
         choice = ui.choose('All set.', lines,
@@ -301,14 +308,16 @@ def run(args):
                             lambda: closed([args.arc_app, args.zen_app]), emit), stage=4, scene='transfer')
                     return finished(ui, result, args, dry_run)
             except (MigrationError, KeyboardInterrupt) as exc:
+                diagnostics.error('command', exc)
                 message = str(exc) if isinstance(exc, MigrationError) else 'Cancelled.'
-                ui.receipt = ['ArcToZen did not complete.', message]
+                ui.receipt = ['ArcToZen did not complete.', message, *diagnostics.receipt()]
                 choice = ui.choose('Migration stopped', [message,
                     'No success is reported. Keep any backup and recovery run ID shown above.'],
                     [('Exit', 'exit'), ('Continue from browser setup', 'retry')], stage=4)
                 if choice != 'retry': return 1
                 ui.receipt = []
-            except Exception:
+            except Exception as exc:
+                diagnostics.error('command', exc)
                 ui.choose('Operation stopped', ['An unexpected error occurred; browser data was not logged.',
                     'Check the saved run journal before retrying a transfer.'], [('Exit', 'exit')], stage=4)
                 return 1
