@@ -1,0 +1,92 @@
+[
+  {
+    "arc": "planet",
+    "zen": "planet.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "code",
+    "zen": "code.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "airplane",
+    "zen": "airplane.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "bookmark",
+    "zen": "bookmark.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "egg",
+    "zen": "egg.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "people",
+    "zen": "people.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "skull",
+    "zen": "skull.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "cloud",
+    "zen": "cloud.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "video",
+    "zen": "video.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "star",
+    "zen": "star.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "triangle",
+    "zen": "triangle.svg",
+    "match": "exact"
+  },
+  {
+    "arc": "flash",
+    "zen": "lightning.svg",
+    "match": "approximate"
+  },
+  {
+    "arc": "construction",
+    "zen": "construct.svg",
+    "match": "approximate"
+  },
+  {
+    "arc": "ellipse",
+    "zen": "circle.svg",
+    "match": "approximate"
+  },
+  {
+    "arc": "notifications",
+    "zen": "bell.svg",
+    "match": "approximate"
+  },
+  {
+    "arc": "chatBubbleEllipses",
+    "zen": "chat.svg",
+    "match": "approximate"
+  },
+  {
+    "arc": "medical",
+    "zen": "heart.svg",
+    "match": "approximate"
+  },
+  {
+    "arc": "bulb",
+    "zen": "sun.svg",
+    "match": "approximate"
+  }
+]

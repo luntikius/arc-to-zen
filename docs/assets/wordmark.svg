@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="200" viewBox="0 0 1080 200" role="img" aria-labelledby="title desc">
+<title id="title">ArcToZen</title>
+<desc id="desc">The violet ArcToZen wordmark with a terminal prompt on the left, from the startup animation.</desc>
+<rect width="1080" height="200" rx="16" fill="#111015"/>
+<g font-family="Menlo,DejaVu Sans Mono,monospace" font-size="80" xml:space="preserve">
+<text x="300" y="127" fill="#af87ff" font-weight="700">❯</text>
+<text x="396" y="127" fill="#af87ff" font-weight="700">A</text>
+<text x="444" y="127" fill="#af87ff" font-weight="700">r</text>
+<text x="492" y="127" fill="#af87ff" font-weight="700">c</text>
+<text x="540" y="127" fill="#af87ff" font-weight="700">T</text>
+<text x="588" y="127" fill="#af87ff" font-weight="700">o</text>
+<text x="636" y="127" fill="#af87ff" font-weight="700">Z</text>
+<text x="684" y="127" fill="#af87ff" font-weight="700">e</text>
+<text x="732" y="127" fill="#af87ff" font-weight="700">n</text>
+</g>
+</svg>

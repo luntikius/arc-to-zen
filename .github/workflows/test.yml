@@ -1,0 +1,40 @@
+name: Synthetic and native Zen checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Require native Apple Silicon
+        run: |
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          sw_vers
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.13.5'
+      - run: uv sync --frozen --python 3.12.12
+      - name: Install pinned Zen in disposable CI machine
+        run: |
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS --retry 3 https://github.com/zen-browser/desktop/releases/download/1.23.4b/zen.macos-universal.dmg -o "$RUNNER_TEMP/zen.dmg"
+          printf '%s  %s\n' da410033b1bb334ba054850943a39fd364c74d368deba7eb19dc5e4f68420fad "$RUNNER_TEMP/zen.dmg" | shasum -a 256 -c -
+          hdiutil attach "$RUNNER_TEMP/zen.dmg" -nobrowse -mountpoint "$RUNNER_TEMP/zen-mount"
+          cp -R "$RUNNER_TEMP/zen-mount/Zen.app" /Applications/Zen.app
+          hdiutil detach "$RUNNER_TEMP/zen-mount"
+      - name: Source, isolation, two restarts, repair and rollback
+        env:
+          ARC_TO_ZEN_INTEGRATION: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: uv run python -W ignore::ResourceWarning -W ignore::DeprecationWarning -m unittest discover -s tests -v
+      - name: Synthetic terminal wizard
+        run: uv run python scripts/test_terminal.py
+      - name: Build allowlisted release
+        run: uv run python scripts/build_release.py "$RUNNER_TEMP/release"
+      - name: Bootstrap without external Python, uv or Homebrew
+        run: uv run python scripts/test_bootstrap.py "$RUNNER_TEMP/release"

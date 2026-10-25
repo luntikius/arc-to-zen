@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools==84.1.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arc-to-zen"
+version = "0.4.0"
+description = "Local, reversible Arc to Zen migration for macOS"
+requires-python = ">=3.10"
+dependencies = ["lz4==4.4.5", "marionette_driver==3.7.1", "psutil==5.9.8"]
+
+[project.scripts]
+arc-to-zen = "arc_to_zen.cli:main"
+
+[tool.setuptools.package-data]
+arc_to_zen = ["*.js", "icon_mapping.json"]
+
+[tool.setuptools.packages.find]
+include = ["arc_to_zen*"]
+
+[tool.uv]
+build-constraint-dependencies = ["setuptools==84.1.0", "wheel==0.46.2", "packaging==26.3"]
