@@ -90,6 +90,8 @@ def migrate(args):
         print(stage + (f" ({done}/{total})" if total is not None else "…"), flush=True)
     result = transfer(args, summary, check_closed, progress)
     print(f"Migration complete. Run: {result['run']}. Backup: {safe(result['backup'])}")
+    if result['skipped'].get('cookies', 0):
+        print(f"Cookies: {result['counts']['cookies']} transferred; {result['skipped']['cookies']} skipped. Some sites may require signing in again.")
     return 0
 
 

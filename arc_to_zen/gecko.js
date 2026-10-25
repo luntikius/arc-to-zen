@@ -272,17 +272,45 @@ const done = arguments[arguments.length - 1];
   }
   if (op === "cookies") {
     let count = 0;
+    const skipped = [];
     const scale = cookieScale();
-    for (const c of data) {
+    const rejected = [
+      "eRejectedEmptyNameAndValue", "eRejectedNameValueOversize", "eRejectedInvalidCharName",
+      "eRejectedInvalidCharValue", "eRejectedInvalidPath", "eRejectedInvalidDomain",
+      "eRejectedInvalidPrefix", "eRejectedNoneRequiresSecure", "eRejectedPartitionedRequiresSecure",
+      "eRejectedHttpOnlyButFromScript", "eRejectedSecureButNonHttps", "eRejectedForNonSameSiteness",
+      "eRejectedAttributePathOversize", "eRejectedAttributeDomainOversize", "eRejectedAttributeExpiryOversize",
+    ].map(name => Ci.nsICookieValidation?.[name]).filter(Number.isInteger);
+    for (const [index, c] of data.entries()) {
+      // Validate the host separately: ILLEGAL_VALUE and INVALID_ARG share a
+      // code, so catching it around add() would also hide broken API arguments.
+      if (c.host) {
+        try { Services.eTLD.getBaseDomainFromHost(c.host); }
+        catch (e) {
+          if (e.result === Cr.NS_ERROR_ILLEGAL_VALUE) { skipped.push(index); continue; }
+          if (![Cr.NS_ERROR_HOST_IS_IP_ADDRESS, Cr.NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS].includes(e.result))
+            throw new Error("cookie host API");
+        }
+      }
       // Chromium stores session expiry as zero; Gecko still requires a future
       // expiry argument when adding an isSession cookie.
       // Zen 1.23.4b's Gecko API takes milliseconds (Chromium uses microseconds).
       const expiry = (c.session ? Date.now() / 1000 + 31536000 : c.expiry) * scale;
-      Services.cookies.add(c.host, c.path, c.name, c.value, c.secure, c.httpOnly,
-        c.session, expiry, c.originAttributes, c.sameSite, c.schemeMap, !!c.originAttributes.partitionKey);
+      let validation;
+      try {
+        validation = Services.cookies.add(c.host, c.path, c.name, c.value, c.secure, c.httpOnly,
+          c.session, expiry, c.originAttributes, c.sameSite, c.schemeMap, !!c.originAttributes.partitionKey);
+      } catch (_) { throw new Error("cookie API failure"); }
+      // Older Gecko add() returns void; accepted records are still read back
+      // and verified before installation. Newer APIs return a validation result.
+      if (validation != null && validation.result !== Ci.nsICookieValidation.eOK) {
+        if (!rejected.includes(validation.result)) throw new Error("cookie validation API");
+        skipped.push(index);
+        continue;
+      }
       count++;
     }
-    return count;
+    return { inserted: count, skipped };
   }
   if (op === "bookmarks") {
     const add = async (node, parentGuid) => {
@@ -377,4 +405,4 @@ const done = arguments[arguments.length - 1];
     return { state, cookies };
   }
   throw new Error("unknown operation");
-})().then(value => done({ ok: true, value }), e => done({ ok: false, stage: op, reason: ["appearance capability", "appearance missing object", "appearance image", "appearance icon", "appearance controls", "appearance gradient", "appearance texture", "appearance folder", "login", "cookie missing", "cookie value", "cookie security", "cookie session", "cookie isolation", "cookie expiry"].includes(e.message) ? e.message : "unsupported data or API" }));
+})().then(value => done({ ok: true, value }), e => done({ ok: false, stage: op, reason: ["appearance capability", "appearance missing object", "appearance image", "appearance icon", "appearance controls", "appearance gradient", "appearance texture", "appearance folder", "login", "cookie missing", "cookie value", "cookie security", "cookie session", "cookie isolation", "cookie expiry", "cookie host API", "cookie API failure", "cookie validation API"].includes(e.message) ? e.message : "unsupported data or API" }));

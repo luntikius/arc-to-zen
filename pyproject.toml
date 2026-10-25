@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arc-to-zen"
-version = "0.4.0"
+version = "0.4.1"
 description = "Local, reversible Arc to Zen migration for macOS"
 requires-python = ">=3.10"
 dependencies = ["lz4==4.4.5", "marionette_driver==3.7.1", "psutil==5.9.8"]

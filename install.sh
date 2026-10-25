@@ -2,7 +2,7 @@
 # One-shot bootstrap. Only this invocation's private directory is removed.
 set -eu
 umask 077
-VERSION=0.4.0
+VERSION=0.4.1
 UV_VERSION=0.13.5
 PYTHON_VERSION=3.12.12
 REPOSITORY=https://github.com/luntikius/arc-to-zen

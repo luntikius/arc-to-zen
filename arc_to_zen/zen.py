@@ -248,6 +248,7 @@ def stage_profile(app, path, p, emit=lambda *args: None):
             remap_contexts(p, {int(k): v for k, v in mapping.items()})
         for kind in ("history", "logins", "cookies", "bookmarks", "forms", "addresses", "cards"):
             accepted_history = []
+            accepted_cookies = []
             accepted_optional = []
             completed = 0
             for batch in batches(getattr(p, kind)):
@@ -261,11 +262,20 @@ def stage_profile(app, path, p, emit=lambda *args: None):
                         raise MigrationError("Incomplete history import.")
                     accepted_history.extend(accepted)
                     p.skipped["history"] += len(skipped)
+                elif kind == "cookies":
+                    if (not isinstance(result, dict) or not isinstance(result.get("skipped"), list)
+                            or any(type(i) is not int or not 0 <= i < len(batch) for i in result["skipped"])):
+                        raise MigrationError("Unknown cookie import result.")
+                    skipped = set(result["skipped"])
+                    if len(skipped) != len(result["skipped"]) or result.get("inserted") != len(batch) - len(skipped):
+                        raise MigrationError("Incomplete cookie import.")
+                    accepted_cookies.extend(r for i, r in enumerate(batch) if i not in skipped)
+                    p.skipped["cookies"] += len(skipped)
                 elif isinstance(result, dict) and "unsupported" in result:
                     if result["unsupported"] != len(batch):
                         raise MigrationError("Unknown partial native import result.")
                     p.skipped[kind] += result["unsupported"]
-                elif kind in ("history", "cookies", "forms") and result != len(batch):
+                elif kind == "forms" and result != len(batch):
                     raise MigrationError(f"Incomplete {kind} import.")
                 if kind in ("addresses", "cards") and not (isinstance(result, dict) and "unsupported" in result):
                     accepted_optional.extend(batch)
@@ -273,6 +283,8 @@ def stage_profile(app, path, p, emit=lambda *args: None):
                 setattr(p, kind, accepted_optional)
             if kind == "history":
                 p.history = accepted_history
+            if kind == "cookies":
+                p.cookies = accepted_cookies
         result = g.call("verifyData", {"logins": p.logins, "cookies": p.cookies})
         if result["history"] != len(p.history):
             raise MigrationError("Incomplete history import.")

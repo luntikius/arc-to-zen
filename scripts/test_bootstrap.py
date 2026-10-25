@@ -11,8 +11,8 @@ root = pathlib.Path(__file__).resolve().parents[1]
 assets = pathlib.Path(sys.argv[1]).resolve()
 with tempfile.TemporaryDirectory(prefix='arc-to-zen-bootstrap-') as t:
     base = pathlib.Path(t)
-    release = base / 'server/releases/download/v0.4.0'; release.mkdir(parents=True)
-    for name in ('arc-to-zen-0.4.0.tar.gz', 'SHA256SUMS'):
+    release = base / 'server/releases/download/v0.4.1'; release.mkdir(parents=True)
+    for name in ('arc-to-zen-0.4.1.tar.gz', 'SHA256SUMS'):
         shutil.copyfile(assets / name, release / name)
     script = (root / 'install.sh').read_text().replace(
         'REPOSITORY=https://github.com/luntikius/arc-to-zen', 'REPOSITORY=' + (base / 'server').as_uri())
@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix='arc-to-zen-bootstrap-') as t:
         assert 'Temporary tool removed.' in result.stdout
         retained()
     if "--interrupt-only" not in sys.argv:
-        (release / 'SHA256SUMS').write_text('0' * 64 + '  arc-to-zen-0.4.0.tar.gz\n')
+        (release / 'SHA256SUMS').write_text('0' * 64 + '  arc-to-zen-0.4.1.tar.gz\n')
         bad = subprocess.run(['/bin/sh', str(installer), '--help'], env=env, capture_output=True, text=True)
         assert bad.returncode != 0 and 'Release checksum mismatch' in bad.stderr
         retained()

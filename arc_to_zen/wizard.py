@@ -186,11 +186,16 @@ def recovery_screen(args, ui, dry_run=False, run=None):
 def finished(ui, result, args, demo):
     lines = [f"{result['counts']['spaces']} Spaces · {result['counts']['tabs']} tabs · {result['counts']['logins']} passwords",
              'Backup: ' + result['backup'], 'Run: ' + result['run']]
+    cookie_notice = []
+    if result.get('skipped', {}).get('cookies', 0):
+        cookie_notice = [f"Cookies: {result['counts']['cookies']} transferred · {result['skipped']['cookies']} skipped.",
+                         'Some sites may require signing in again.']
+    lines += cookie_notice
     lines += ['Keep the backup and run ID for recovery.',
               'To restore later, run the installer again and choose Restore from backup.',
               'The temporary tool is removed when you finish.']
     ui.receipt = ([] if demo else
-        ['ArcToZen migration completed.', 'Backup: ' + result['backup'], 'Run: ' + result['run'],
+        ['ArcToZen migration completed.', *cookie_notice, 'Backup: ' + result['backup'], 'Run: ' + result['run'],
          'To restore later, run the installer again and choose Restore from backup.'])
     while True:
         choice = ui.choose('All set.', lines,
