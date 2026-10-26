@@ -19,7 +19,7 @@ from .common import MigrationError
 _active = None  # The wizard's worker thread shares the invocation's recorder.
 _package = Path(__file__).parent.resolve()
 REASONS = {
-    'palette', 'partition_ancestor', 'source_type', 'source_scheme', 'expired', 'partition_format',
+    'startup_focus', 'palette', 'partition_ancestor', 'source_type', 'source_scheme', 'expired', 'partition_format',
     'partition_port', 'cipher_unsupported', 'encoding', 'same_site', 'invalid_domain',
     'empty_name_value', 'oversize', 'invalid_name', 'invalid_value', 'invalid_path',
     'invalid_prefix', 'none_requires_secure', 'partition_requires_secure',
@@ -31,7 +31,7 @@ REASONS = {
     'appearance controls', 'appearance gradient', 'appearance texture', 'appearance folder',
     'appearance background', 'appearance palette', 'space indicator', 'login', 'unsupported data or API',
 }
-OPERATIONS = {'identity', 'capabilities', 'containers', 'verifyContainers', 'verifyUI',
+OPERATIONS = {'startup', 'identity', 'capabilities', 'containers', 'verifyContainers', 'verifyUI',
     'appearanceCapabilities', 'defaultTheme', 'applyAppearance', 'verifyAppearance',
     'export', 'profileGroup', 'history', 'logins', 'cookies', 'bookmarks', 'forms',
     'addresses', 'cards', 'verifyData', 'state', 'snapshot', 'shutdown', 'keychain',
@@ -44,7 +44,7 @@ EVENTS = {'session_start', 'session_end', 'invocation', 'browser', 'selection', 
 ENUMS = {
     'operation': OPERATIONS, 'stage': {'source', 'native', 'scan', 'transfer', 'restart', 'mapping'},
     'reason': REASONS, 'status': {'started', 'ok', 'failed', 'cancelled', 'absent',
-        'unsupported', 'converted', 'approximated', 'default', 'verified', 'incomplete'},
+        'unsupported', 'converted', 'approximated', 'retrying', 'default', 'verified', 'incomplete'},
     'browser': {'arc', 'zen'}, 'category': CATEGORIES,
     'architecture': {'arm64', 'x86_64'},
     'step': {'backup', 'install', 'verify'},

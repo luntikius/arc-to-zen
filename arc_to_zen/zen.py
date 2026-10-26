@@ -100,7 +100,7 @@ class Gecko:
                 "--profile", str(self.profile), "--marionette", "--remote-allow-system-access"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
             self.client = Marionette(host="127.0.0.1", port=port, socket_timeout=120)
-            self.client.start_session(timeout=60)
+            self._start_session()
             self.client.set_context("chrome")
             self.client.timeout.script = 120
             identity = self.call("identity", None)
@@ -114,6 +114,25 @@ class Gecko:
             if isinstance(exc, (KeyboardInterrupt, SystemExit)):
                 raise
             raise MigrationError("Cannot start isolated Zen staging process.") from None
+
+    def _start_session(self):
+        from marionette_driver.errors import SessionNotCreatedException
+        for attempt in range(3):
+            try:
+                self.client.start_session(timeout=60)
+                return
+            except SessionNotCreatedException as exc:
+                # Zen can replace its selected tab while Marionette is waiting
+                # for the initial navigation. Retry only that observed race,
+                # before identity verification or any data operation.
+                if ('contentBrowser is null' not in exc.message or '"focus"' not in exc.message
+                        or attempt == 2):
+                    raise
+                diagnostics.emit('phase', operation='startup', status='retrying', reason='startup_focus')
+                # Closing the transport makes Marionette's server onClosed()
+                # delete its partially created session; do not replay writes.
+                self.client.delete_session(send_request=False)
+                time.sleep(.5)
 
     def call(self, op, data):
         script = Path(__file__).with_name("gecko.js").read_text()

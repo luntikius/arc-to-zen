@@ -75,6 +75,26 @@ class SecurityTests(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt): g.close()
         proc.terminate.assert_called_once(); client.cleanup.assert_called_once()
 
+    def test_only_known_marionette_startup_focus_race_is_retried(self):
+        from marionette_driver.errors import SessionNotCreatedException
+        known = SessionNotCreatedException('TypeError: can\'t access property "focus", this[#curBrowser].contentBrowser is null')
+        g = Gecko(Path('/unused'), Path('/unused')); g.client = Mock()
+        with patch('arc_to_zen.zen.time.sleep'):
+            g.client.start_session.side_effect = [known, None]
+            g._start_session()
+            self.assertEqual(g.client.start_session.call_count, 2)
+            g.client.delete_session.assert_called_once_with(send_request=False)
+            g.client.reset_mock()
+            g.client.start_session.side_effect = known
+            with self.assertRaises(SessionNotCreatedException): g._start_session()
+            self.assertEqual(g.client.start_session.call_count, 3)
+            self.assertEqual(g.client.delete_session.call_count, 2)
+            for error in (SessionNotCreatedException('Other failure'), KeyboardInterrupt(), OSError()):
+                g.client.reset_mock(); g.client.start_session.side_effect = error
+                with self.assertRaises(type(error)): g._start_session()
+                self.assertEqual(g.client.start_session.call_count, 1)
+                g.client.delete_session.assert_not_called()
+
     def test_cancelled_startup_always_closes_staging_process(self):
         with tempfile.TemporaryDirectory() as t:
             g = Gecko(Path('/unused'), Path(t))
