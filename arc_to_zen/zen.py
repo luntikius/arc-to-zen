@@ -249,6 +249,7 @@ def check_sidebar(expected, actual):
 
 
 def stage_profile(app, path, p, emit=lambda *args: None):
+    p.imported_space_count = len(p.sidebar["spaces"])
     emit("Starting isolated Zen")
     with Gecko(app, path) as g:
         g.call("capabilities", None)
@@ -325,6 +326,12 @@ def stage_profile(app, path, p, emit=lambda *args: None):
         if result["history"] != len(p.history):
             raise MigrationError("Incomplete history import.")
         base = g.call("state", None)
+        if not p.sidebar['spaces']:
+            # Keep Zen's own initial workspace, with no imported container.
+            from copy import deepcopy
+            initial = base['windows'][0]
+            p.sidebar['spaces'] = deepcopy(initial['spaces'])
+            p.sidebar['activeZenSpace'] = initial['activeZenSpace']
     # Gecko is closed before writing session files, so it cannot overwrite them.
     state, sidebar = session_documents(p.sidebar, base, [
         {"host": c["host"], "path": c["path"], "name": c["name"], "value": c["value"],
@@ -353,7 +360,8 @@ def stage_profile(app, path, p, emit=lambda *args: None):
                         space=diagnostics.alias('space', observed['uuid']),
                         container=diagnostics.alias('container', observed['container']),
                         matches=True, indicator_hidden=observed['indicatorsHidden'],
-                        hide_default_indicator=observed['hideDefaultIndicator'], status='verified')
+                        hide_default_indicator=observed['hideDefaultIndicator'],
+                        essentials_indicator_hidden=observed['essentialsIndicatorsHidden'], status='verified')
             result = g.call("verifyData", {"logins": p.logins, "cookies": p.cookies})
             if result["history"] != len(p.history):
                 raise MigrationError("History changed after browser restart.")

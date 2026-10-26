@@ -59,7 +59,7 @@ History, passwords, cookies and other profile-level data cover the **whole selec
 
 ### How profiles work
 
-All imported Spaces are available in **one Zen window**. Each Arc profile maps to a container; several Spaces can share that container.
+All imported Spaces are available in **one Zen window**. Each Arc profile maps to a container; several Spaces can share that container. A profile without selected Spaces creates only a container. Its Essentials remain isolated in that container and become visible when a Space uses it. If no Spaces are imported, Zen keeps its native initial Space.
 
 **Cookies, site sessions and Essentials are separated by container. History and the password manager are shared.** These are native Zen containers, not separate browser installations or Firefox profiles.
 
@@ -123,7 +123,11 @@ without the flag. A dry run still never requests Keychain; encrypted cookie comp
 only checked during a confirmed migration. For an earlier run, a new log cannot reconstruct
 the original rejection reasons—repeat the scan or migration with diagnostics enabled.
 
-Skipped themes are reported explicitly and use Zen's native default. That fallback is not
+For an unknown color-background variant with a valid Arc `midTone` palette, the tool
+approximates the theme with one native Zen color. Original gradient, opacity and texture
+cannot be recovered; Zen's native defaults are used for opacity and texture. Palette
+approximations are counted separately in the results and diagnostics.
+Skipped themes are reported explicitly and use Zen's native default. That default is not
 counted as a transferred Arc theme. Keep the log from a problematic theme so its source format,
 conversion and native restoration checks can be investigated.
 

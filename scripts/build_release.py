@@ -5,7 +5,7 @@ import sys
 import tarfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
-version = '0.4.2rc1'
+version = '0.4.2'
 out = pathlib.Path(sys.argv[1]).resolve()
 out.mkdir(parents=True, exist_ok=True)
 archive = out / f'arc-to-zen-{version}.tar.gz'

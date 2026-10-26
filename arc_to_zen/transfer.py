@@ -7,7 +7,7 @@ from pathlib import Path
 from .common import MigrationError, database, private_tree, table_exists
 from .crypto import ArcDecryptor
 from .selection import catalog
-from .source import (discover, build_sidebars, workspace, identifier, read_history, add_archive,
+from .source import (discover, build_sidebars, identifier, read_history, add_archive,
                      read_bookmarks, read_passwords, read_cookies, read_web_data)
 from .merge import merge_profiles
 from .zen import Gecko, stage_profile, comparable_sidebar
@@ -64,7 +64,6 @@ def collect(root, selection, secrets=False, emit=quiet):
     else:
         for p in profiles.values():
             p.sidebar = {k: [] for k in ('tabs', 'folders', 'groups', 'splitViewData', 'spaces')}
-            p.sidebar['spaces'] = [workspace({'id': p.key, 'title': p.name})]
     for p in profiles.values():
         for kind in ('spaces', 'folders'):
             for item in p.sidebar[kind]:
@@ -94,7 +93,7 @@ def counts(p):
     def bookmarks(nodes):
         return sum(1 if 'url' in n else bookmarks(n.get('children', [])) for n in nodes)
     result = {k: len(getattr(p, k)) for k in ('history', 'logins', 'cookies', 'forms', 'addresses', 'cards')}
-    result.update(profiles=len(p.containers), spaces=len(p.sidebar['spaces']),
+    result.update(profiles=len(p.containers), spaces=p.imported_space_count if p.imported_space_count is not None else len(p.sidebar['spaces']),
         tabs=sum(not t.get('zenIsEmpty') for t in p.sidebar['tabs']), folders=len(p.sidebar['folders']),
         bookmarks=bookmarks(p.bookmarks), archive=p.archived_visits,
         themes=p.theme_count if p.theme_count is not None else sum(bool(s.get('theme') or s.get('_arcAppearance', {}).get('windowTheme')) for s in p.sidebar['spaces']),

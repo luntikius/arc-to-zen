@@ -30,6 +30,7 @@ class Profile:
     skipped: Counter = field(default_factory=Counter)
     archived_visits: int = 0
     theme_count: int | None = None
+    imported_space_count: int | None = None
 
 
 def identifier(kind, value):
@@ -212,15 +213,11 @@ def build_sidebars(root, profiles, space_ids=None, all_profile_keys=None):
             if all_profile_keys is not None and key in all_profile_keys:
                 continue
             raise MigrationError("Favorites refer to a missing Arc profile.")
-        if space_ids is not None and not p.sidebar["spaces"]:
-            continue
-        if not p.sidebar["spaces"]:
-            p.sidebar["spaces"].append(workspace({"id": key, "title": p.name}))
-        visit(rootid, p, p.sidebar["spaces"][0]["uuid"], pinned=True, essential=True)
+        # Essentials belong to a container, not to a fabricated workspace.
+        visit(rootid, p, None, pinned=True, essential=True)
     for p in profiles.values():
-        if not p.sidebar["spaces"]:
-            p.sidebar["spaces"].append(workspace({"id": p.key, "title": p.name}))
-        p.sidebar.setdefault("activeZenSpace", p.sidebar["spaces"][0]["uuid"])
+        if p.sidebar["spaces"]:
+            p.sidebar.setdefault("activeZenSpace", p.sidebar["spaces"][0]["uuid"])
         p.sidebar["tabs"].sort(key=lambda t: (not t.get("zenEssential", False), not t.get("pinned", False)))
     return space_profiles
 

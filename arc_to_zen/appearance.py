@@ -25,7 +25,9 @@ def icon_table():
 
 
 def capabilities(browser):
-    return browser.call('appearanceCapabilities', [ICON_PREFIX + r['zen'] for r in icon_table().values()])
+    result = browser.call('appearanceCapabilities', [ICON_PREFIX + r['zen'] for r in icon_table().values()])
+    result['defaultTheme'] = browser.call('defaultTheme', None)
+    return result
 
 
 def icon(value, caps, skipped, folder=False):
@@ -78,6 +80,20 @@ def theme(value, caps, skipped, space=0):
         else:
             settings = bg['single']['_0']
             style = settings['style']['color']['_0']
+            if isinstance(style, dict) and len(style) == 1 and 'blendedGradient' not in style:
+                # Unknown color background: only the explicitly approved Arc
+                # palette fallback is supported, never arbitrary nested colors.
+                rgba = color(value['primaryColorPalette']['midTone'])
+                from copy import deepcopy
+                result = deepcopy(caps['defaultTheme'])
+                lightness = colorsys.rgb_to_hls(*rgba[:3])[1]
+                result['gradientColors'] = [{'c': [round(x * 255) for x in rgba[:3]],
+                    'isCustom': False, 'algorithm': 'floating', 'isPrimary': True,
+                    'lightness': round(lightness * 100), 'type': 'explicit-lightness'}]
+                skipped['paletteThemes'] += 1
+                diagnostics.emit('theme', space=space, stage='mapping', status='approximated',
+                                 reason='palette', output_theme=result)
+                return result
             gradient = style['blendedGradient']['_0']
         bases = [color(c) for c in gradient['baseColors']]
         if not bases:

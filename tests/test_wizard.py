@@ -59,7 +59,7 @@ class SelectionTests(unittest.TestCase):
             value = collect(self.root, selection, secrets=True)
         self.assertEqual(len(value.forms), 1)
         self.assertEqual(value.cards, [])
-        self.assertEqual(len(value.sidebar['spaces']), 1)
+        self.assertEqual(len(value.sidebar['spaces']), 0)
         self.assertEqual(value.sidebar['tabs'], [])
 
     def test_passwords_and_cookies_have_independent_readers(self):

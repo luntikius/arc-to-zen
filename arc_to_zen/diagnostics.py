@@ -19,7 +19,7 @@ from .common import MigrationError
 _active = None  # The wizard's worker thread shares the invocation's recorder.
 _package = Path(__file__).parent.resolve()
 REASONS = {
-    'partition_ancestor', 'source_type', 'source_scheme', 'expired', 'partition_format',
+    'palette', 'partition_ancestor', 'source_type', 'source_scheme', 'expired', 'partition_format',
     'partition_port', 'cipher_unsupported', 'encoding', 'same_site', 'invalid_domain',
     'empty_name_value', 'oversize', 'invalid_name', 'invalid_value', 'invalid_path',
     'invalid_prefix', 'none_requires_secure', 'partition_requires_secure',
@@ -44,7 +44,7 @@ EVENTS = {'session_start', 'session_end', 'invocation', 'browser', 'selection', 
 ENUMS = {
     'operation': OPERATIONS, 'stage': {'source', 'native', 'scan', 'transfer', 'restart', 'mapping'},
     'reason': REASONS, 'status': {'started', 'ok', 'failed', 'cancelled', 'absent',
-        'unsupported', 'converted', 'default', 'verified', 'incomplete'},
+        'unsupported', 'converted', 'approximated', 'default', 'verified', 'incomplete'},
     'browser': {'arc', 'zen'}, 'category': CATEGORIES,
     'architecture': {'arm64', 'x86_64'},
     'step': {'backup', 'install', 'verify'},
@@ -58,7 +58,7 @@ NUMBERS = {'elapsed_ms', 'profile', 'space', 'container', 'tab', 'cookie', 'rest
            'source', 'accepted', 'skipped', 'tabs', 'spaces', 'profiles', 'exit_code',
            'source_skipped', 'native_skipped', 'themes', 'icons', 'done', 'total', 'line'}
 BOOLS = {'matches', 'default_container', 'indicator_hidden', 'hide_default_indicator',
-         'theme_present', 'new_tab', 'dry_run', 'demo', 'enabled'}
+         'essentials_indicator_hidden', 'theme_present', 'new_tab', 'dry_run', 'demo', 'enabled'}
 THEME_KEYS = set('background single dual light dark automatic system _0 style color solid '
     'gradient blendedGradient baseColors overlayColors red green blue alpha colorSpace '
     'contentOverBackgroundAppearance isVibrant translucencyStyle modifiers intensityFactor '
@@ -107,7 +107,7 @@ def _fields(fields):
             result[key] = value
         elif key == 'reasons': result[key] = {k: v for k, v in value.items() if k in REASONS and type(v) is int}
         elif key in ('counts', 'skipped_counts'):
-            keys = CATEGORIES | {'logins', 'profiles', 'spaces', 'folders', 'appearance', 'themeApproximations'}
+            keys = CATEGORIES | {'logins', 'profiles', 'spaces', 'folders', 'appearance', 'themeApproximations', 'paletteThemes'}
             result[key] = {k: v for k, v in value.items() if k in keys and type(v) is int and v >= 0}
     return result
 

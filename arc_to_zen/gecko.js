@@ -99,6 +99,14 @@ const done = arguments[arguments.length - 1];
       const hideDefaultIndicator = Services.prefs.getBoolPref("zen.workspaces.hide-default-container-indicator", false);
       const expectedTabs = JSON.parse(SessionStore.getBrowserState()).windows[0].tabs.filter(t =>
         t.zenWorkspace === space.uuid && t.zenDefaultUserContextId && !t.zenEssential && !t.zenIsEmpty);
+      let essentialsIndicatorsHidden = true;
+      for (const tab of section.querySelectorAll('tab:not([zen-empty-tab])')) {
+        if (tab.getAttribute('zenDefaultUserContextId') !== 'true') throw new Error('space indicator');
+        const line = tab.querySelector('.tab-context-line');
+        const hidden = !!line && win.getComputedStyle(line).display === 'none';
+        essentialsIndicatorsHidden &&= hidden;
+        if (hideDefaultIndicator && !hidden) throw new Error('space indicator');
+      }
       let indicatorsHidden = true;
       for (const expected of expectedTabs) {
         const tab = [...win.gBrowser.tabs].find(t => t.id === expected.zenSyncId);
@@ -108,7 +116,7 @@ const done = arguments[arguments.length - 1];
         indicatorsHidden &&= hidden;
         if (hideDefaultIndicator && !hidden) throw new Error("space indicator");
       }
-      result.push({uuid: space.uuid, container: space.containerTabId, indicatorsHidden, hideDefaultIndicator,
+      result.push({uuid: space.uuid, container: space.containerTabId, indicatorsHidden, hideDefaultIndicator, essentialsIndicatorsHidden,
         essentials: section.querySelectorAll("tab:not([zen-empty-tab])").length});
     }
     await manager.changeWorkspaceWithID(first);

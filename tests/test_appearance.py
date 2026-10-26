@@ -20,6 +20,7 @@ from arc_to_zen.repair_appearance import repair_appearance, check_native_restore
 from fixtures import synthetic_arc, write_json
 
 CAPS = {'icons': [ICON_PREFIX + r['zen'] for r in icon_table().values()], 'maxColors': 3,
+        'defaultTheme': {'type': 'gradient', 'gradientColors': [], 'opacity': .5, 'texture': 0},
         'minOpacity': .3, 'maxOpacity': .8, 'harmonies': ['floating', 'singleAnalogous', 'analogous', 'complementary']}
 
 
@@ -137,6 +138,32 @@ class AppearanceTests(unittest.TestCase):
         self.assertEqual(sidebar['spaces'][1]['icon'], 'keep')
         self.assertEqual(sidebar['folders'][0]['userIcon'], 'keep')
         self.assertEqual(patches(sidebar, source, CAPS, Counter()), {'spaces': [], 'folders': []})
+
+
+class PaletteFallbackTests(unittest.TestCase):
+    def test_unknown_color_background_uses_only_mid_tone_and_native_defaults(self):
+        value = {'background': {'single': {'_0': {'style': {'color': {'_0': {'futureColor': {}}}}}}},
+                 'primaryColorPalette': {'midTone': {'red': .2, 'green': .4, 'blue': .6, 'alpha': .1}}}
+        skipped = Counter()
+        result = theme(value, CAPS, skipped)
+        self.assertEqual(result['gradientColors'][0]['c'], [51, 102, 153])
+        self.assertEqual((result['opacity'], result['texture']), (.5, 0))
+        self.assertEqual(skipped, {'paletteThemes': 1})
+        # The same adapter backs appearance-only updates and is idempotent.
+        source = {'spaces': {'a': {'windowTheme': value}}, 'folders': {}}
+        sidebar = {'spaces': [{'uuid': 'a'}], 'folders': []}
+        changes = patches(sidebar, source, CAPS, Counter())
+        apply_patches(sidebar, changes)
+        self.assertEqual(sidebar['spaces'][0]['theme'], result)
+        self.assertFalse(any(patches(sidebar, source, CAPS, Counter()).values()))
+        for palette in (None, {}, {'midTone': {'red': float('nan'), 'green': 0, 'blue': 0}},
+                        {'midTone': {'red': 1, 'green': 0, 'blue': 0, 'colorSpace': 'future'}}):
+            value['primaryColorPalette'] = palette
+            skipped = Counter()
+            self.assertIsNone(theme(value, CAPS, skipped))
+            self.assertEqual(skipped['themes'], 1)
+            self.assertEqual(skipped['paletteThemes'], 0)
+        self.assertIsNone(theme(None, CAPS, Counter()))
 
 
 @unittest.skipUnless(os.environ.get('ARC_TO_ZEN_INTEGRATION') == '1', 'Opt in to isolated Zen checks')

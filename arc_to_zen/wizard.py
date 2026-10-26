@@ -26,7 +26,7 @@ def selection_screen(ui, data, selection):
         rows += [('Continue to review', ('continue', None)), ('Back', ('back', None))]
         choice = ui.choose('Choose what comes with you', [
             'Profile-level data covers the whole selected profile, even if you select only one Space.',
-            'A profile without selected Spaces gets an empty Space.',
+            'A profile without selected Spaces becomes a container only.',
             'Disabled categories are not read or decrypted.'], rows, cursor=cursor, bottom_actions=2)
         if isinstance(choice, str): return choice, selection
         cursor = next(i for i, (_, value) in enumerate(rows) if value == choice)
@@ -97,8 +97,9 @@ def ensure_closed(args, ui, stage):
 def summary_lines(result):
     labels = {'logins': 'Passwords', 'forms': 'Autofill', 'history': 'History visits', 'archive': 'Archived visits (included in history)'}
     lines = [f'{labels.get(k, k.title())}: {v:,}' for k, v in result.counts.items()]
-    lines += [(f'Approximated themes: {v:,}' if k == 'themeApproximations' else f'Skipped {k}: {v:,}')
-              for k, v in result.skipped.items() if v]
+    notices = {'themeApproximations': 'Native theme approximations',
+               'paletteThemes': 'Themes approximated from Arc palettes'}
+    lines += [f'{notices.get(k, "Skipped " + k)}: {v:,}' for k, v in result.skipped.items() if v]
     return lines + result.warnings
 
 
@@ -196,6 +197,9 @@ def finished(ui, result, args, demo):
     if result.get('skipped', {}).get('themes', 0):
         theme_notice = [f"Space themes: {result.get('counts', {}).get('themes', 0)} transferred · {result['skipped']['themes']} skipped.",
                         'Unsupported themes use the native Zen default.']
+    if result.get('skipped', {}).get('paletteThemes', 0):
+        theme_notice += [f"Space themes approximated from Arc palettes: {result['skipped']['paletteThemes']}.",
+                         'Original gradient, opacity and texture could not be recovered.']
     lines += theme_notice
     lines += diagnostics.receipt()
     lines += ['Keep the backup and run ID for recovery.',

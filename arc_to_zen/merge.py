@@ -32,7 +32,7 @@ def merge_profiles(profiles):
             # Native SessionStore persists whether this is the Space's default
             # context independently of the context ID and its colored indicator.
             space = next((s for s in p.sidebar['spaces'] if s['uuid'] == t.get('zenWorkspace')), None)
-            if space is not None and not t.get('zenEssential'):
+            if space is not None or t.get('zenEssential'):
                 t['zenDefaultUserContextId'] = True
             # Old principals contain the old context. Gecko recreates them from
             # the restored URL under the new tab's userContextId.
@@ -92,9 +92,8 @@ def merge_profiles(profiles):
     result.sidebar["tabs"].sort(key=lambda t: 0 if t.get("zenEssential") else 1 if t.get("pinned") else 2)
     result.logins = list(logins.values())
     result.forms = list(forms.values())
-    if not result.sidebar["spaces"]:
-        raise MigrationError("No Spaces to migrate.")
-    result.sidebar["activeZenSpace"] = result.sidebar["spaces"][0]["uuid"]
+    if result.sidebar["spaces"]:
+        result.sidebar["activeZenSpace"] = result.sidebar["spaces"][0]["uuid"]
     return result
 
 
